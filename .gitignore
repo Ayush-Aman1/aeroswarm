@@ -12,7 +12,6 @@ data/fields/
 *.vtk
 config/notify.env
 .env
-.claude/
 results/windows/*/
 !results/windows/.gitkeep
 node_modules/
