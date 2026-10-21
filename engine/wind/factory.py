@@ -29,3 +29,21 @@ def make_wind(name: str, layout: Layout, inflow: Inflow, dt_s: float = 0.05, **c
         raise ValueError(f"unknown wind source {name!r}; choose synthetic | fluidx3d | lbmpy | native")
     wind.reset(layout, inflow)
     return wind
+
+
+def available_tiers(field_dir=None) -> list[str]:
+    """Tiers that can start on this machine right now (synthetic always)."""
+    out = ["synthetic"]
+    try:
+        from engine.wind.fluidx3d_field import FluidX3DField
+        if FluidX3DField.available(field_dir):
+            out.append("fluidx3d")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from engine.wind.lbmpy_solver import LbmpySolver
+        if LbmpySolver.available():
+            out.append("lbmpy")
+    except Exception:  # noqa: BLE001
+        pass
+    return out

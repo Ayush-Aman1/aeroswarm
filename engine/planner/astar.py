@@ -21,6 +21,7 @@ import itertools
 import math
 import queue
 import threading
+from functools import wraps
 from dataclasses import dataclass
 
 import numpy as np
@@ -43,6 +44,15 @@ class _Costs:
     layout_version: int
 
 
+def _locked(fn):
+    """Serialise planner access between the main thread and the AsyncReplanner worker."""
+    @wraps(fn)
+    def inner(self, *a, **k):
+        with self._lock:
+            return fn(self, *a, **k)
+    return inner
+
+
 class GridPlanner:
     def __init__(self, layout: Layout, weights=(0.0, 0.0, 0.0), cell_m: float = 10.0, layers=LAYERS_M,
                  margin_m: float = 5.0, v_cruise: float = 12.0, k_snapshots: int = 10, snap_radius_m: float = 30.0):
@@ -50,12 +60,14 @@ class GridPlanner:
         self.margin_m, self.v_cruise, self.k = margin_m, v_cruise, k_snapshots
         self.snap_radius_m = snap_radius_m
         self.weights = tuple(weights)
+        self._lock = threading.RLock()
         self._snaps: list[np.ndarray] = []
         self._costs: _Costs | None = None
         self._comp = None
         self.set_layout(layout)
 
     # ------------------------------------------------------------------ geometry
+    @_locked
     def set_layout(self, layout: Layout) -> None:
         self.layout = layout
         self.nx = int(round(layout.area_m[0] / self.cell_m))
@@ -103,6 +115,7 @@ class GridPlanner:
         return valid
 
     # ------------------------------------------------------------------ wind statistics
+    @_locked
     def observe(self, wind) -> None:
         """Record one wind snapshot (cell-centre velocities) in the ring buffer of K snapshots."""
         u = to_numpy(wind.sample(self.centers.reshape(-1, 3))).reshape(self.shape + (3,)).astype(np.float32)
@@ -110,10 +123,12 @@ class GridPlanner:
         if len(self._snaps) > self.k:
             self._snaps.pop(0)
 
+    @_locked
     def set_weights(self, weights) -> None:
         self.weights = tuple(weights)
         self.refresh()
 
+    @_locked
     def refresh(self) -> None:
         """Recompute all 26 edge-cost arrays from the current snapshots + weights (atomic swap)."""
         a, b, c = self.weights
@@ -219,6 +234,7 @@ class GridPlanner:
             return None, math.inf
         return [self._unflat(n) for n in path], c
 
+    @_locked
     def plan(self, start_xyz, goal_xyz):
         """Waypoints [K,3] in metres from start to goal, or None if unreachable.
 
@@ -254,6 +270,7 @@ class GridPlanner:
             self._comp = connected_components(g, directed=False)[1]
         return self._comp
 
+    @_locked
     def reachable(self, a_xy, b_xy) -> bool:
         """Is there a grid route between two ground points (e.g. depot and target)?"""
         sa = self.snap((a_xy[0], a_xy[1], 0.0))
