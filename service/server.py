@@ -61,8 +61,12 @@ class Service:
         if old is not None:
             old.close()
         self.scenario = scenario
+        cfg = dict(self.wind_cfg)
+        if wind_name == "lbmpy" and not backend.is_gpu:
+            cfg.setdefault("dx_m", 8.0)      # CPU lbmpy cannot run the 2 m grid in real time; GPU boxes use 2 m
+            log.warning("lbmpy on CPU: coarse %.0f m grid (use the NVIDIA laptop for the 2 m grid)", cfg["dx_m"])
         self.sim = Simulation(scenario, wind_name=wind_name, seed=seed, continuous=True, async_planner=True,
-                              wind_cfg=self.wind_cfg)
+                              wind_cfg=cfg)
         self.tier = wind_name
         self.tracers = Tracers(self.n_tracers, self.sim.layout.bounds_m, seed=scenario.seed)
         self.tracers.set_direction(self.sim.inflow.direction_deg)

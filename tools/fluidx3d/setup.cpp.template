@@ -1,0 +1,77 @@
+// AeroSwarm Tier 2 setup for FluidX3D (https://github.com/ProjectPhysX/FluidX3D, custom licence: free for
+// non-commercial use). This file REPLACES src/setup.cpp in a *copy* of the FluidX3D tree made by
+// tools/fluidx3d/batch.py; no other FluidX3D source file is modified except the extension switches in
+// src/defines.hpp (BENCHMARK off, EQUILIBRIUM_BOUNDARIES + SUBGRID on, D3Q19 + FP16S) - see defines.patch in
+// tools/fluidx3d/README.md.
+//
+// Why a case *file* and not a generated header: FluidX3D interprets argv as OpenCL device ids, so the case is read
+// from "aeroswarm_case.txt" next to the executable. One build then serves every layout x direction job.
+//
+// Geometry: the wind always blows along +x of the lattice; wind direction is handled by ROTATING THE CITY
+// (cos_t/sin_t below), never the inflow. Boundaries: x=0 inflow, x=max outflow, y and z=max free stream
+// (TYPE_E, log-law profile), z=0 ground and buildings TYPE_S.
+#include "setup.hpp"
+#include <cmath>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <vector>
+
+struct AeroBox { float x, y, w, d, h; };
+
+static std::map<std::string, float> aero_case(const std::string& path, std::vector<AeroBox>& boxes, std::string& export_dir) {
+	std::ifstream in(path);
+	if(!in) { print_error("AeroSwarm: cannot open case file "+path); }
+	std::map<std::string, float> kv;
+	std::string line;
+	while(std::getline(in, line)) {
+		std::istringstream ss(line);
+		std::string key; ss >> key;
+		if(key.empty() || key[0]=='#') continue;
+		if(key=="export_dir") { ss >> export_dir; continue; }
+		if(key=="building") { AeroBox b; ss >> b.x >> b.y >> b.w >> b.d >> b.h; boxes.push_back(b); continue; }
+		float v; ss >> v; kv[key] = v;
+	}
+	return kv;
+}
+
+void main_setup() {
+	std::vector<AeroBox> boxes; std::string export_dir;
+	const auto c = aero_case(get_exe_path()+"aeroswarm_case.txt", boxes, export_dir);
+	const uint Nx=(uint)c.at("nx"), Ny=(uint)c.at("ny"), Nz=(uint)c.at("nz");
+	const float dx_m=c.at("dx_m"), u_ref=c.at("u_ref_si"), z0=c.at("z0"), lbm_u_ref=c.at("lbm_u_ref");
+	const float cos_t=c.at("cos_t"), sin_t=c.at("sin_t");
+	const float dom_cx=c.at("dom_cx"), dom_cy=c.at("dom_cy"), city_cx=c.at("city_cx"), city_cy=c.at("city_cy");
+	const ulong settle=(ulong)c.at("settle_steps"), snap=(ulong)c.at("snap_steps"); const uint n_snaps=(uint)c.at("n_snaps");
+	const float si_nu=1.48E-5f, si_rho=1.225f;
+	// ---- units: 1 lattice cell = dx_m metres; lattice speed lbm_u_ref <-> u_ref m/s (lbm_u_ref chosen so the
+	// fastest inflow cell stays <= 0.08, guide rule). Viscosity floor keeps tau > 0.51 (SUBGRID adds eddy viscosity).
+	units.set_m_kg_s(1.0f, lbm_u_ref, 1.0f, dx_m, u_ref, si_rho);
+	const float lbm_nu = fmax(units.nu(si_nu), c.at("nu_floor"));
+	const ulong total = settle + snap*(ulong)n_snaps;
+	LBM lbm(Nx, Ny, Nz, lbm_nu);
+	// ---- geometry + boundary/initial conditions
+	const auto profile = [&](float z_m) { // log law, lattice units
+		return lbm_u_ref*logf(fmax(z_m, z0)/z0)/logf(10.0f/z0);
+	};
+	parallel_for(lbm.get_N(), [&](ulong n) { uint x=0u, y=0u, z=0u; lbm.coordinates(n, x, y, z);
+		const float px=((float)x+0.5f)*dx_m, py=((float)y+0.5f)*dx_m, pz=((float)z+0.5f)*dx_m;
+		// lattice cell centre -> city frame: p_city = c_city + R(theta) (p_dom - c_dom)
+		const float rx=px-dom_cx, ry=py-dom_cy;
+		const float cx=city_cx+cos_t*rx-sin_t*ry, cy=city_cy+sin_t*rx+cos_t*ry;
+		bool solid = (z==0u);
+		for(const AeroBox& b : boxes) if(cx>=b.x && cx<=b.x+b.w && cy>=b.y && cy<=b.y+b.d && pz<=b.h) { solid = true; break; }
+		lbm.u.x[n] = solid ? 0.0f : profile(pz);
+		if(solid) lbm.flags[n] = TYPE_S;
+		else if(x==0u||x==Nx-1u||y==0u||y==Ny-1u||z==Nz-1u) lbm.flags[n] = TYPE_E;
+	});
+	// ---- settle, then export n_snaps velocity snapshots at equal intervals (SI units, VTK)
+	lbm.run(0u, total);
+	lbm.run(settle, total);
+	for(uint s=0u; s<n_snaps; s++) {
+		lbm.run(snap, total);
+		lbm.u.write_device_to_vtk(export_dir, true); // -> <export_dir>/u-<step>.vtk, m/s, spacing in metres
+		print_info("AeroSwarm: wrote snapshot "+to_string(s+1u)+"/"+to_string(n_snaps));
+	}
+	write_file(export_dir+"DONE", "ok\n");
+}

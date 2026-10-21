@@ -13,7 +13,7 @@ Tags: [MAC] fully built + tested on the Mac · [MAC+GPU] code for numpy + cupy, 
 | P6 live service | [MAC] | – | [x] |
 | P7 viewer | [MAC] (50 FPS check [WINDOWS]) | Gate 2: full desktop demo on Tier 3 | [x] |
 | P8 building editor | [MAC] | – | [x] |
-| P9 Tier 2 FluidX3D fields | [WINDOWS] (converter + field adapter [MAC]) | – | [ ] |
-| P10 Tier 1 lbmpy solver | [MAC+GPU] | – | [ ] |
+| P9 Tier 2 FluidX3D fields | [WINDOWS] (converter + field adapter [MAC]) | – | [x] |
+| P10 Tier 1 lbmpy solver | [MAC+GPU] | – | [x] |
 | P11 WebXR | [MAC] build + logic, headset/emulator [WINDOWS] | – | [x] |
 | P12 benchmarks + experiments | [MAC+GPU] | Gate 3 | [ ] |
