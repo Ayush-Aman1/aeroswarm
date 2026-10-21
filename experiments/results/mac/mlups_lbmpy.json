@@ -1,0 +1,32 @@
+[
+ {
+  "tier": "1-lbmpy",
+  "device": "Apple M1 Pro",
+  "target": "cpu",
+  "grid": "64x64x64",
+  "steps": 100,
+  "mlups": 24.06,
+  "ceiling_mlups": 609.8,
+  "pct_of_ceiling": 3.95
+ },
+ {
+  "tier": "1-lbmpy",
+  "device": "Apple M1 Pro",
+  "target": "cpu",
+  "grid": "128x128x128",
+  "steps": 100,
+  "mlups": 25.19,
+  "ceiling_mlups": 609.8,
+  "pct_of_ceiling": 4.13
+ },
+ {
+  "tier": "1-lbmpy",
+  "device": "Apple M1 Pro",
+  "target": "cpu",
+  "grid": "256x128x128",
+  "steps": 33,
+  "mlups": 25.73,
+  "ceiling_mlups": 609.8,
+  "pct_of_ceiling": 4.22
+ }
+]

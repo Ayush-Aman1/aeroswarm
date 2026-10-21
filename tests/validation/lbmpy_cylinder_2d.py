@@ -26,6 +26,8 @@ def run_lbmpy_cylinder(nx=320, ny=128, diameter=16, u_in=0.08, reynolds=120.0, s
     kc.cpu.openmp.enable = False
     lbs = LatticeBoltzmannStep(domain_size=(nx, ny), periodicity=(False, True), lbm_config=cfg, config=kc,
                                compute_velocity_in_every_step=True, name="cyl")
+    from engine.wind.lbmpy_solver import zero_pdf_fields
+    zero_pdf_fields(lbs)
     bh = lbs.boundary_handling
     bh.set_boundary(UBB((u_in, 0.0)), slice_from_direction("W", 2))
     bh.set_boundary(FixedDensity(1.0), slice_from_direction("E", 2))

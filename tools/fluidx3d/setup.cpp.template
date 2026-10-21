@@ -28,7 +28,7 @@ static std::map<std::string, float> aero_case(const std::string& path, std::vect
 		std::istringstream ss(line);
 		std::string key; ss >> key;
 		if(key.empty() || key[0]=='#') continue;
-		if(key=="export_dir") { ss >> export_dir; continue; }
+		if(key=="export_dir") { std::getline(ss >> std::ws, export_dir); continue; } // rest of the line: paths may contain spaces
 		if(key=="building") { AeroBox b; ss >> b.x >> b.y >> b.w >> b.d >> b.h; boxes.push_back(b); continue; }
 		float v; ss >> v; kv[key] = v;
 	}

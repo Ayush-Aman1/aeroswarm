@@ -1,0 +1,2 @@
+tier,device,grid,mlups,ceiling_mlups,pct_of_ceiling,bytes_per_cell,wall_s
+2-fluidx3d,Apple M1 Pro,256x256x256,2056.0,2597.4,79.16,77,117

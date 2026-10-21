@@ -1,0 +1,7 @@
+backend,n,search,step_ms
+numpy,100,grid,0.56
+numpy,100,naive,0.263
+numpy,1000,grid,1.964
+numpy,1000,naive,20.462
+numpy,10000,grid,14.526
+numpy,10000,naive,1288.556

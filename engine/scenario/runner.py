@@ -129,12 +129,18 @@ class Simulation:
         return self.planner.plan(start, goal)
 
     def _begin_leg(self, i, start):
-        """Plan + install the path for drone i's current phase leg (synchronous)."""
+        """Plan + install the path for drone i's current phase leg. Synchronous in headless runs (deterministic);
+        with the async planner the leg is planned on the worker thread and the drone waits on the ground/at the
+        target until the path arrives at a step boundary (_apply_async_results)."""
         goal = self._goal(i)
+        self.leg_epoch[i] += 1
+        if self.replanner is not None:
+            self.drones.active[i] = False
+            self.replanner.submit(i, np.asarray(start, float), goal, tag=int(self.leg_epoch[i]))
+            return True
         wps = self.planner.plan(start, goal)
         if wps is None:
             return False
-        self.leg_epoch[i] += 1
         self.drones.set_path(i, wps)
         return True
 
@@ -206,9 +212,17 @@ class Simulation:
         if self.replanner is None:
             return
         for key, tag, res in self.replanner.collect():
-            if isinstance(res, np.ndarray) and tag == self.leg_epoch[key] and self.phase[key] in (OUTBOUND, RETURNING):
+            if tag != self.leg_epoch[key] or self.phase[key] not in (OUTBOUND, RETURNING):
+                continue                                        # stale result: the drone moved on to another leg
+            if isinstance(res, np.ndarray):
                 pos = to_numpy(self.drones.pos[key])
                 self.drones.set_path(key, trim_behind(pos, res))   # atomic swap at the step boundary
+            elif not bool(self.drones.active[key]):             # a leg that could not be planned at all
+                self.phase[key] = DONE
+                self.metrics.close_mission(key, self.sc.missions[key], self.start_t[key],
+                                           "failed" if self.deliver_t[key] != self.deliver_t[key] else "stranded",
+                                           None if self.deliver_t[key] != self.deliver_t[key] else self.deliver_t[key],
+                                           None, self.drones)
 
     def _complete(self, i):
         t_total = self.t - self.start_t[i]

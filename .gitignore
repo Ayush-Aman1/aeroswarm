@@ -6,6 +6,8 @@ __pycache__/
 node_modules/
 third_party/
 runs/
+# Tier 2 fields: the Mac demo set (block_small 0/90 deg, street_canyon + tower_cluster 0 deg, ~0.44 GB) is committed with
+# `git add -f`; anything the batch generates later stays ignored so a full 2.8 GB set is never committed by accident.
 data/fields/
 *.vtk
 config/notify.env
@@ -15,3 +17,4 @@ results/windows/*/
 !results/windows/.gitkeep
 node_modules/
 *.egg-info/
+results/linux/*/

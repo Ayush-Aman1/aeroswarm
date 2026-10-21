@@ -35,10 +35,11 @@ DEPOTS = {
 }
 
 
-def make(name: str, seed: int = 1, n_missions: int = 50) -> dict:
+def make(name: str, seed: int = 1, n_missions: int = 50, layout: str | None = None, sim_extra: dict | None = None) -> dict:
+    layout = layout or name
     rng = np.random.default_rng(1000 + sum(map(ord, name)))
-    buildings = [dict(id=i, x=x, y=y, w=w, d=d, h=h) for i, (x, y, w, d, h) in enumerate(LAYOUTS[name])]
-    depots = [dict(id=i, x=x, y=y) for i, (x, y) in enumerate(DEPOTS[name])]
+    buildings = [dict(id=i, x=x, y=y, w=w, d=d, h=h) for i, (x, y, w, d, h) in enumerate(LAYOUTS[layout])]
+    depots = [dict(id=i, x=x, y=y) for i, (x, y) in enumerate(DEPOTS[layout])]
     missions = []
     while len(missions) < n_missions:
         tx, ty = float(rng.uniform(150, 385)), float(rng.uniform(15, 285))
@@ -50,7 +51,7 @@ def make(name: str, seed: int = 1, n_missions: int = 50) -> dict:
              layout=dict(area_m=[400, 300], ceiling_m=120, buildings=buildings),
              inflow=dict(speed_ms=8.0, direction_deg=0.0, roughness=0.5),
              depots=depots, missions=missions,
-             sim=dict(dt=0.05, duration_s=300.0, tier="synthetic", routing="naive"))
+             sim={**dict(dt=0.05, duration_s=300.0, tier="synthetic", routing="naive"), **(sim_extra or {})})
     scenario_from_dict(d)  # validate
     return d
 
@@ -61,3 +62,9 @@ if __name__ == "__main__":
             json.dump(make(nm), fh, indent=1)
             fh.write("\n")
         print("wrote", OUT / f"{nm}.json")
+    # 1000-drone load scenario (viewer FPS / swarm scaling check): block_small layout, 1000 missions
+    with open(OUT / "stress_1k.json", "w") as fh:
+        json.dump(make("stress_1k", n_missions=1000, layout="block_small", sim_extra=dict(start_window_s=120.0, duration_s=600.0)),
+                  fh, indent=0, separators=(",", ":"))
+        fh.write("\n")
+    print("wrote", OUT / "stress_1k.json")

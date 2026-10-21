@@ -46,4 +46,10 @@ def available_tiers(field_dir=None) -> list[str]:
             out.append("lbmpy")
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from engine.wind.native import NativeWind
+        if NativeWind.available():
+            out.append("native")
+    except Exception:  # noqa: BLE001
+        pass
     return out

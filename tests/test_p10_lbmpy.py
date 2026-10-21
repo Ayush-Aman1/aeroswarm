@@ -2,9 +2,12 @@ import dataclasses
 from pathlib import Path
 
 import numpy as np
+import sys
+
 import pytest
 
 lbmpy = pytest.importorskip("lbmpy")
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="pystencils 2.0 has no Windows CPU JIT: run Tier 1 under WSL2/Ubuntu")
 
 from engine import backend
 from engine.backend import to_numpy
@@ -156,3 +159,14 @@ def test_service_runs_the_lbmpy_tier_on_a_coarse_cpu_grid(scenario):
     assert len(data) < 1_000_000
     m = svc.stats_message()
     assert m["tier"] == "lbmpy" and m["wind"]["tau"] > 0.51
+
+
+def test_tier1_is_not_sensitive_to_recycled_heap_memory(scenario):
+    """Regression: np.empty PDF arrays leaked NaN into the wind when the process had recycled memory."""
+    junk = [np.full(2_000_000, np.nan) for _ in range(40)]          # fill the heap with NaN pages, free them
+    del junk
+    w = make_wind("lbmpy", scenario.layout, scenario.inflow, dx_m=DX)
+    for _ in range(60):
+        w.step(1)
+    v = to_numpy(w.sample(np.random.default_rng(1).uniform([0, 0, 0], [400, 300, 119], (200, 3))))
+    assert np.isfinite(v).all()

@@ -120,7 +120,7 @@ class Case:
             f"nu_floor {self.nu_floor}", f"cos_t {math.cos(t):.9f}", f"sin_t {math.sin(t):.9f}",
             f"dom_cx {self.dom_c[0]}", f"dom_cy {self.dom_c[1]}", f"city_cx {self.city_c[0]}", f"city_cy {self.city_c[1]}",
             f"settle_steps {self.settle_steps}", f"snap_steps {self.snap_steps}", f"n_snaps {self.n_snaps}",
-            f"export_dir {str(export_dir).rstrip('/')}/",
+            f"export_dir {str(export_dir).replace(chr(92), '/').rstrip('/')}/",   # forward slashes work on Windows too
         ]
         lines += [f"building {b.x} {b.y} {b.w} {b.d} {b.h}" for b in self.layout.buildings]
         return "\n".join(lines) + "\n"

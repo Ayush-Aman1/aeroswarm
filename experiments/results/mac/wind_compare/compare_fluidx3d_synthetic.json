@@ -1,0 +1,13 @@
+{
+ "rel_l2": 0.35988160967826843,
+ "speed_corr": 0.7474004965945752,
+ "mean_speed_ratio": 1.1515361070632935,
+ "wake_a": 0.12605080008506775,
+ "wake_b": 0.6560017466545105,
+ "wake_ratio_b_over_a": 5.204264837762199,
+ "pass": false,
+ "tiers": [
+  "fluidx3d",
+  "synthetic"
+ ]
+}

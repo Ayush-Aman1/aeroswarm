@@ -87,6 +87,21 @@ def solid_mask(layout: Layout, shape, dx_m: float) -> np.ndarray:
     return m
 
 
+def zero_pdf_fields(lbs) -> None:
+    """Give the PDF arrays defined contents before the first step.
+
+    pystencils allocates them with np.empty / cupy.empty, i.e. uninitialised memory. Ghost-layer populations that no
+    initialisation kernel writes then hold whatever the heap contained: harmless in a fresh process (zero pages), NaN in a
+    process that has recycled memory (seen as NaN winds when Tier 1 ran after other work in the same process).
+    """
+    dh = lbs.data_handling
+    for name in (lbs.pdf_array_name, lbs._tmp_arr_name):
+        if name in dh.cpu_arrays:
+            dh.cpu_arrays[name][...] = 0.0
+        if name in getattr(dh, "gpu_arrays", {}):
+            dh.gpu_arrays[name].fill(0.0)
+
+
 class _Core:
     """One lbmpy LatticeBoltzmannStep for a (layout, inflow) pair."""
 
@@ -116,6 +131,7 @@ class _Core:
         self.lbs = LatticeBoltzmannStep(domain_size=self.shape, lbm_config=cfg, config=kc,
                                         compute_velocity_in_every_step=True, name="aeroswarm")
         self.dh = self.lbs.data_handling
+        zero_pdf_fields(self.lbs)
         self._set_boundaries(layout, inflow, stencil, UBB, FixedDensity, FreeSlip, NoSlip, slice_from_direction)
         self.solid = solid_mask(layout, self.shape, dx_m)
         self._init_field(init_velocity_si)
@@ -209,6 +225,9 @@ class LbmpySolver(WindSourceBase):
                  relayout_chunk_steps: int = 50, settle_tol: float = 1e-4, settle_consecutive: int = 3,
                  settle_min_steps: int = 300, settle_max_steps: int = 20000, **_: object) -> None:
         super().__init__(dt_s)
+        reason = self.unavailable_reason()
+        if reason:
+            raise RuntimeError(f"Tier 1 (lbmpy) cannot run here: {reason}")
         self.dx_m = dx_m
         self.target = ("gpu" if backend.is_gpu else "cpu") if target == "auto" else target
         if self.target == "gpu" and not backend.is_gpu:
@@ -224,13 +243,25 @@ class LbmpySolver(WindSourceBase):
         self._win = [0, 0.0]            # lattice steps / seconds in the current MLUPS window
 
     @classmethod
-    def available(cls, *_a, **_k) -> bool:
+    def unavailable_reason(cls) -> str:
+        """'' if Tier 1 can run here, else why not."""
+        import sys
         try:
             import lbmpy  # noqa: F401
             import pystencils  # noqa: F401
         except ImportError:
-            return False
-        return any(shutil.which(c) for c in ("clang++", "g++", "cl"))
+            return "lbmpy / pystencils are not installed"
+        if sys.platform == "win32":
+            return ("pystencils 2.0's CPU JIT supports only Linux and macOS compilers (no MSVC), and lbmpy compiles its "
+                    "macroscopic-value kernels on the CPU even for the GPU target: run Tier 1 under WSL2/Ubuntu "
+                    "(docs/LINKING_GUIDE.md, HANDOFF_WINDOWS.md section 'Tier 1 needs Linux')")
+        if not any(shutil.which(c) for c in ("clang++", "g++")):
+            return "no C++ compiler (clang++/g++) on PATH"
+        return ""
+
+    @classmethod
+    def available(cls, *_a, **_k) -> bool:
+        return cls.unavailable_reason() == ""
 
     # ------------------------------------------------------------------ interface
     def reset(self, layout: Layout, inflow: Inflow) -> None:

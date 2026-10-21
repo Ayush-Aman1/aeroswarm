@@ -1,0 +1,38 @@
+[
+ {
+  "backend": "numpy",
+  "n": 100,
+  "search": "grid",
+  "step_ms": 0.56
+ },
+ {
+  "backend": "numpy",
+  "n": 100,
+  "search": "naive",
+  "step_ms": 0.263
+ },
+ {
+  "backend": "numpy",
+  "n": 1000,
+  "search": "grid",
+  "step_ms": 1.964
+ },
+ {
+  "backend": "numpy",
+  "n": 1000,
+  "search": "naive",
+  "step_ms": 20.462
+ },
+ {
+  "backend": "numpy",
+  "n": 10000,
+  "search": "grid",
+  "step_ms": 14.526
+ },
+ {
+  "backend": "numpy",
+  "n": 10000,
+  "search": "naive",
+  "step_ms": 1288.556
+ }
+]

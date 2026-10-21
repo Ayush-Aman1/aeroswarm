@@ -1,0 +1,4 @@
+tier,device,target,grid,steps,mlups,ceiling_mlups,pct_of_ceiling
+1-lbmpy,Apple M1 Pro,cpu,64x64x64,100,24.06,609.8,3.95
+1-lbmpy,Apple M1 Pro,cpu,128x128x128,100,25.19,609.8,4.13
+1-lbmpy,Apple M1 Pro,cpu,256x128x128,33,25.73,609.8,4.22

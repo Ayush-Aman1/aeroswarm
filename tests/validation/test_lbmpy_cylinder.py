@@ -1,6 +1,9 @@
+import sys
+
 import pytest
 
 pytest.importorskip("lbmpy")
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="pystencils 2.0 has no Windows CPU JIT: run Tier 1 under WSL2/Ubuntu")
 
 from tests.validation.lbmpy_cylinder_2d import run_lbmpy_cylinder
 from tests.validation import cylinder_2d

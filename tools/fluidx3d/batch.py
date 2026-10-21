@@ -1,7 +1,7 @@
 """Tier 2 batch: for each layout preset x wind direction -> case file -> FluidX3D run -> VTK -> float16 .npy fields.
 
     python -m tools.fluidx3d.batch --dry-run                       # list jobs, VRAM and disk budget, change nothing
-    python -m tools.fluidx3d.batch                                 # all scenarios/*.json x 8 directions (resumable)
+    python -m tools.fluidx3d.batch                                 # the 3 layout presets x 8 directions (resumable)
     python -m tools.fluidx3d.batch --scenarios scenarios/block_small.json --directions 0 90 --dx 4
 
 FluidX3D itself is never modified in place: the tree is copied to third_party/FluidX3D_aeroswarm/, src/setup.cpp is
@@ -30,6 +30,7 @@ from tools.fluidx3d.convert import convert_run, write_vtk_fluidx3d
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = Path(__file__).with_name("setup.cpp.template")
 BUDGET_BYTES = 3 * 10**9
+DEFAULT_PRESETS = ("block_small", "street_canyon", "tower_cluster")    # the three layouts; stress_1k reuses block_small's buildings
 
 
 def patch_defines(text: str) -> str:
@@ -150,9 +151,14 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=None, help="stop after N jobs (testing)")
     ap.add_argument("--timeout-min", type=float, default=90.0, help="per-job wall-clock limit")
     ap.add_argument("--keep-vtk", action="store_true")
+    ap.add_argument("--build-only", action="store_true", help="prepare + build the patched FluidX3D tree and exit")
     a = ap.parse_args(argv)
+    if a.build_only:
+        exe = build(prepare_tree(Path(a.fluidx3d), Path(a.work)))
+        print("FluidX3D binary:", exe)
+        return 0
 
-    scen = [Path(p) for p in a.scenarios] if a.scenarios else sorted((ROOT / "scenarios").glob("*.json"))
+    scen = [Path(p) for p in a.scenarios] if a.scenarios else [ROOT / "scenarios" / f"{n}.json" for n in DEFAULT_PRESETS]
     jobs = list(jobs_for(scen, a.directions, a.dx, a.zmax))
     out = Path(a.out)
     total = sum(field_bytes(sc.layout, a.dx, a.zmax) for sc, _, _ in jobs)
@@ -172,7 +178,7 @@ def main(argv=None) -> int:
 
     exe = None
     if a.solver == "real":
-        exe = Path(a.binary) if a.binary else build(prepare_tree(Path(a.fluidx3d), Path(a.work)))
+        exe = (Path(a.binary) if a.binary else build(prepare_tree(Path(a.fluidx3d), Path(a.work)))).resolve()
         print("FluidX3D binary:", exe, flush=True)
     work = Path(a.work)
     done = failed = 0
