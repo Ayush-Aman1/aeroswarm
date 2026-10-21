@@ -5,8 +5,8 @@ Tags: [MAC] fully built + tested on the Mac · [MAC+GPU] code for numpy + cupy, 
 | Task | Tag | Gate | Status |
 |------|-----|------|--------|
 | P0 scaffold, schema, protocol | [MAC] | – | [x] |
-| P1 Tier 3 synthetic wind | [MAC] | – | [ ] |
-| P2 validation baselines | [MAC] | Gate 1: vortex shedding (St 0.16-0.22) | [ ] |
+| P1 Tier 3 synthetic wind | [MAC] | – | [x] |
+| P2 validation baselines | [MAC] | Gate 1: vortex shedding (St 0.16-0.22) | [x] St = 0.163 |
 | P3 drones + swarm grid | [MAC+GPU] | – | [ ] |
 | P4 wind-aware A* | [MAC] | – | [ ] |
 | P5 scenarios, metrics, replay | [MAC] | – | [ ] |
