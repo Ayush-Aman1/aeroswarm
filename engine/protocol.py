@@ -41,7 +41,7 @@ def pack_snapshot(s: Snapshot) -> bytes:
     st = np.asarray(s.drone_state, np.uint8).tobytes()
     parts.append(st + b"\0" * _pad4(len(st)))
     parts.append(np.ascontiguousarray(np.asarray(s.tracers, "<f4").reshape(-1, 3)).tobytes())
-    sl = np.ascontiguousarray(np.asarray(s.slice_speed, "<f2")).tobytes()
+    sl = np.ascontiguousarray(np.asarray(s.slice_speed, "<f2").T).tobytes()      # x fastest: index j*nx+i
     parts.append(sl + b"\0" * _pad4(len(sl)))
     return b"".join(parts)
 
@@ -61,7 +61,7 @@ def unpack_snapshot(buf: bytes) -> Snapshot:
     off += n + _pad4(n)
     tr = np.frombuffer(buf, "<f4", m * 3, off).reshape(m, 3).copy()
     off += m * 12
-    sl = np.frombuffer(buf, "<f2", nx * ny, off).reshape(nx, ny).copy()
+    sl = np.frombuffer(buf, "<f2", nx * ny, off).reshape(ny, nx).T.copy()
     off += nx * ny * 2 + _pad4(nx * ny * 2)
     if off != len(buf):
         raise ValueError(f"trailing/missing bytes: parsed {off}, got {len(buf)}")

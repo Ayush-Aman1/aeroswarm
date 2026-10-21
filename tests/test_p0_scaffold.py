@@ -128,3 +128,14 @@ def test_replay_roundtrip(tmp_path):
             write_replay_frame(fh, s)
     frames = read_replay(p)
     assert [f.step for f in frames] == [0, 1, 2]
+
+
+def test_slice_is_x_fastest_on_the_wire():
+    """docs/protocol.md: index j*nx + i, i.e. the byte stream walks x first."""
+    nx, ny = 4, 3
+    sl = (np.arange(nx)[:, None] + 10 * np.arange(ny)[None, :]).astype("f2")      # value = i + 10 j
+    s = _snap(2, 2, nx, ny)
+    s.slice_speed = sl
+    b = pack_snapshot(s)
+    body = np.frombuffer(b[-(nx * ny * 2):], "<f2")
+    assert body.tolist() == [i + 10 * j for j in range(ny) for i in range(nx)]

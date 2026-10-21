@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AeroSwarm</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%234aa8ff'/%3E%3C/svg%3E" />
+  <style>
+    :root { --bg:#0e1116; --panel:rgba(18,22,30,.86); --fg:#e6edf3; --muted:#8b98a8; --acc:#4aa8ff; --bad:#ff5d5d; --ok:#3ddc84; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:12px/1.4 system-ui, sans-serif; overflow:hidden; }
+    canvas#view { position:fixed; inset:0; width:100%; height:100%; display:block; }
+    #hud { position:fixed; top:10px; left:10px; width:262px; max-height:calc(100% - 20px); overflow:auto; background:var(--panel);
+           border:1px solid #2a3340; border-radius:8px; padding:10px 12px; backdrop-filter:blur(4px); }
+    #hud h1 { font-size:13px; margin:0 0 6px; letter-spacing:.04em; cursor:pointer; }
+    #hud.collapsed > :not(h1) { display:none; } #hud.collapsed { width:auto; }
+    #hud h2 { font-size:10px; margin:10px 0 4px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+    .row { display:flex; justify-content:space-between; gap:8px; align-items:center; margin:2px 0; }
+    .row b { font-weight:600; font-variant-numeric:tabular-nums; }
+    .muted { color:var(--muted); }
+    button, select { background:#1b2430; color:var(--fg); border:1px solid #33404f; border-radius:5px; padding:4px 8px; font:inherit; cursor:pointer; }
+    button:hover, select:hover { border-color:var(--acc); }
+    button.on { background:#16436b; border-color:var(--acc); }
+    button:disabled { opacity:.45; cursor:default; }
+    .btns { display:flex; flex-wrap:wrap; gap:5px; margin:4px 0; }
+    label.tog { display:inline-flex; align-items:center; gap:4px; margin-right:8px; }
+    input[type=range] { width:100%; }
+    #banner { position:fixed; top:12px; left:50%; transform:translateX(-50%); background:#3b2f10; border:1px solid #b9892a; color:#ffd479;
+              padding:6px 14px; border-radius:16px; display:none; font-weight:600; }
+    #toasts { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:6px; align-items:center; }
+    .toast { background:#3a1518; border:1px solid var(--bad); color:#ffc9c9; padding:7px 14px; border-radius:6px; max-width:560px; }
+    .toast.info { background:#10304a; border-color:var(--acc); color:#cfe8ff; }
+    #conn { position:fixed; top:10px; right:10px; padding:3px 9px; border-radius:12px; background:var(--panel); border:1px solid #2a3340; }
+    #conn.ok { color:var(--ok); } #conn.bad { color:var(--bad); }
+    #legend { position:fixed; right:10px; bottom:10px; background:var(--panel); border:1px solid #2a3340; border-radius:6px; padding:6px 10px; }
+    #legend .bar { height:8px; width:150px; background:linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725); border-radius:3px; margin:3px 0; }
+    #xr-slot button { position:static !important; width:100% !important; margin:4px 0 !important; }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="banner">settling wind…</div>
+  <div id="conn" class="bad">connecting…</div>
+  <div id="hud">
+    <h1>AeroSwarm <span class="muted" id="scn"></span></h1>
+    <div class="row"><span class="muted">wind tier</span> <select id="tier"></select></div>
+    <div class="row"><span class="muted">routing</span>
+      <span><button id="route-naive">naive</button> <button id="route-aware">wind-aware</button></span></div>
+    <div class="row"><span class="muted">scenario</span> <select id="scenario"></select></div>
+
+    <h2>Live</h2>
+    <div class="row"><span class="muted">step / sim time</span> <b id="m-step">–</b></div>
+    <div class="row"><span class="muted">FPS (view / server)</span> <b id="m-fps">–</b></div>
+    <div class="row"><span class="muted">snapshot</span> <b id="m-bytes">–</b></div>
+    <div class="row"><span class="muted">wind</span> <b id="m-wind">–</b></div>
+    <h2>Metrics so far</h2>
+    <div class="row"><span class="muted">delivered</span> <b id="m-del">–</b></div>
+    <div class="row"><span class="muted">mean delivery time</span> <b id="m-dt">–</b></div>
+    <div class="row"><span class="muted">energy proxy / mission</span> <b id="m-en">–</b></div>
+    <div class="row"><span class="muted">cross-track drift</span> <b id="m-dr">–</b></div>
+    <div class="row"><span class="muted">near-collisions</span> <b id="m-nc">–</b></div>
+    <div class="row"><span class="muted">drones airborne</span> <b id="m-act">–</b></div>
+
+    <h2>Layers</h2>
+    <div>
+      <label class="tog"><input type="checkbox" id="t-buildings" checked />buildings</label>
+      <label class="tog"><input type="checkbox" id="t-drones" checked />drones</label>
+      <label class="tog"><input type="checkbox" id="t-tracers" checked />tracers</label>
+      <label class="tog"><input type="checkbox" id="t-trails" checked />trails</label>
+      <label class="tog"><input type="checkbox" id="t-slice" checked />wind slice</label>
+      <label class="tog"><input type="checkbox" id="t-markers" checked />depots/targets</label>
+    </div>
+    <div class="row"><span class="muted">slice height</span> <b id="slice-val">30 m</b></div>
+    <input type="range" id="slice-z" min="2" max="110" step="2" value="30" />
+
+    <h2>Scene</h2>
+    <div class="btns">
+      <button id="btn-rotate">Rotate wind 45°</button>
+      <button id="btn-pause">Pause</button>
+    </div>
+    <div class="row"><span class="muted">wind</span> <b id="m-inflow">–</b></div>
+
+    <h2>Building editor</h2>
+    <div class="btns">
+      <button id="btn-edit">Edit mode</button>
+      <button id="btn-move" class="on" disabled>Move</button>
+      <button id="btn-scale" disabled>Scale</button>
+    </div>
+    <div class="muted" id="edit-help">Enable edit mode, click a building, drag its gizmo; release to apply.</div>
+    <h2>XR</h2>
+    <div id="xr-slot"></div>
+    <div class="muted" id="xr-help">Squeeze: next/prev drone · Trigger: grab a building</div>
+  </div>
+  <div id="legend"><span class="muted">wind speed</span><div class="bar"></div><span class="muted">0</span><span class="muted" style="float:right">14 m/s</span></div>
+  <div id="toasts"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
