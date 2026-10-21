@@ -1,0 +1,43 @@
+AeroSwarm Fallback Baseline Build Guide.md:1: # AeroSwarm Fallback Baseline: Build Guide
+AeroSwarm Fallback Baseline Build Guide.md:5: ## Purpose and strategy
+AeroSwarm Fallback Baseline Build Guide.md:21: ## Architecture
+AeroSwarm Fallback Baseline Build Guide.md:31: ### Interface contract
+AeroSwarm Fallback Baseline Build Guide.md:48: ### Folder layout
+AeroSwarm Fallback Baseline Build Guide.md:69: ## Download checklist
+AeroSwarm Fallback Baseline Build Guide.md:73: ### On the NVIDIA laptop (Windows 11 or Ubuntu 22.04/24.04)
+AeroSwarm Fallback Baseline Build Guide.md:87: ### On every machine
+AeroSwarm Fallback Baseline Build Guide.md:101: ### Repos to clone into third_party/ (read-only references)
+AeroSwarm Fallback Baseline Build Guide.md:119: ## Pick list
+AeroSwarm Fallback Baseline Build Guide.md:138: ## Build order and gates
+AeroSwarm Fallback Baseline Build Guide.md:148: ## Running the coding agent
+AeroSwarm Fallback Baseline Build Guide.md:164: ### Master context prompt (AGENTS.md)
+AeroSwarm Fallback Baseline Build Guide.md:200: ## Module prompts
+AeroSwarm Fallback Baseline Build Guide.md:204: ### P0. Scaffold and interfaces
+AeroSwarm Fallback Baseline Build Guide.md:206: Task P0: create the repo skeleton and the contracts every later module uses.\
+AeroSwarm Fallback Baseline Build Guide.md:229: ### P1. Tier 3 synthetic wind
+AeroSwarm Fallback Baseline Build Guide.md:231: Task P1: engine/wind/synthetic.py implementing WindSource with no CFD.\
+AeroSwarm Fallback Baseline Build Guide.md:247: ### P2. Validation baselines
+AeroSwarm Fallback Baseline Build Guide.md:249: Task P2: tests/validation/ using third_party/latticeboltzmann-python as the\
+AeroSwarm Fallback Baseline Build Guide.md:259: ### P3. Drones and swarm grid
+AeroSwarm Fallback Baseline Build Guide.md:261: Task P3: engine/swarm/ with xp arrays (works on numpy and cupy).\
+AeroSwarm Fallback Baseline Build Guide.md:277: ### P4. Wind-aware A\* planner
+AeroSwarm Fallback Baseline Build Guide.md:279: Task P4: engine/planner/astar.py, pure numpy, runs on CPU.\
+AeroSwarm Fallback Baseline Build Guide.md:292: ### P5. Scenarios, metrics and replay
+AeroSwarm Fallback Baseline Build Guide.md:294: Task P5: engine/scenario/runner.py and engine/metrics/.\
+AeroSwarm Fallback Baseline Build Guide.md:305: ### P6. Live service
+AeroSwarm Fallback Baseline Build Guide.md:307: Task P6: service/server.py with aiohttp.\
+AeroSwarm Fallback Baseline Build Guide.md:320: ### P7. Viewer
+AeroSwarm Fallback Baseline Build Guide.md:322: Task P7: viewer/ with Vite + three.js (version pinned in package-lock).\
+AeroSwarm Fallback Baseline Build Guide.md:334: ### P8. Building editor
+AeroSwarm Fallback Baseline Build Guide.md:336: Task P8: viewer editor mode.\
+AeroSwarm Fallback Baseline Build Guide.md:343: ### P9. Tier 2 FluidX3D fields
+AeroSwarm Fallback Baseline Build Guide.md:345: Task P9 (NVIDIA laptop): precomputed CFD wind via FluidX3D.\
+AeroSwarm Fallback Baseline Build Guide.md:361: ### P10. Tier 1 lbmpy live solver
+AeroSwarm Fallback Baseline Build Guide.md:363: Task P10 (NVIDIA laptop): engine/wind/lbmpy_solver.py.\
+AeroSwarm Fallback Baseline Build Guide.md:377: ### P11. WebXR drone's-eye view
+AeroSwarm Fallback Baseline Build Guide.md:379: Task P11: viewer XR mode.\
+AeroSwarm Fallback Baseline Build Guide.md:387: ### P12. Benchmarks and experiments
+AeroSwarm Fallback Baseline Build Guide.md:389: Task P12: bench/ and experiments/.\
+AeroSwarm Fallback Baseline Build Guide.md:398: ## Demo and testing checklist
+AeroSwarm Fallback Baseline Build Guide.md:442: ## Credits and licences
+AeroSwarm Fallback Baseline Build Guide.md:462: ## Troubleshooting

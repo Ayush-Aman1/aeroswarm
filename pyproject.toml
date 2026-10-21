@@ -1,0 +1,15 @@
+[project]
+name = "aeroswarm"
+version = "0.1.0"
+description = "Wind-aware drone swarm simulator (fallback baseline: three wind tiers behind one WindSource interface)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "gpu: needs a CUDA device and cupy (skips cleanly elsewhere)",
+    "fluidx3d: needs a built FluidX3D binary (skips cleanly elsewhere)",
+    "slow: long-running test (tens of seconds or more)",
+]

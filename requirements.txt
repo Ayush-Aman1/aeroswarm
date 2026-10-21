@@ -1,0 +1,14 @@
+# Core (all machines). Exact versions that were tested live in requirements.lock.
+numpy
+scipy
+aiohttp
+pytest
+matplotlib
+meshio
+pyvista
+lbmpy
+pystencils
+# GPU machine only (install by hand, see HANDOFF_WINDOWS.md):
+#   cupy-cuda12x
+#   lbmpy[gpu]
+# Optional (Bengaluru extension): osmnx geopandas shapely
