@@ -27,5 +27,6 @@ def test_lockfile_pins_three():
 @pytest.mark.skipif(not (VIEWER / "node_modules").exists() or shutil.which("npx") is None,
                     reason="run `npm ci` in viewer/ to enable the JS unit tests")
 def test_vitest_suite():
-    r = subprocess.run(["npx", "vitest", "run"], cwd=VIEWER, capture_output=True, text=True, timeout=180)
+    # full path: on Windows `npx` is npx.cmd, which subprocess cannot start by its bare name
+    r = subprocess.run([shutil.which("npx"), "vitest", "run"], cwd=VIEWER, capture_output=True, text=True, timeout=180)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-1000:]

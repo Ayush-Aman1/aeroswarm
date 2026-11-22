@@ -36,6 +36,7 @@ class Grid:
 
     def build(self, pos):
         """-> dict(ijk, cid, counts, starts, order). order[starts[c]:starts[c]+counts[c]] = ids in cell c."""
+        pos = xp.asarray(pos)      # accept host arrays on the cupy backend (dtype unchanged: CPU path stays bit-identical)
         n = len(pos)
         ijk = self.cell_ijk(pos)
         cid = self.flat(ijk)

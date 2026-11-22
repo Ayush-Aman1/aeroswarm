@@ -109,6 +109,7 @@ def run_real(exe: Path, case: Case, theta: float, vtk_dir: Path, log: Path, time
 
 def run_fake(case: Case, theta: float, vtk_dir: Path) -> None:
     """TEST ONLY: VTK snapshots sampled from the Tier 3 synthetic wind, rotated into the lattice frame."""
+    from engine.backend import to_numpy
     from engine.wind.synthetic import SyntheticWind
     vtk_dir.mkdir(parents=True, exist_ok=True)
     w = SyntheticWind(dt_s=0.05, dx_m=case.dx_m)
@@ -120,7 +121,7 @@ def run_fake(case: Case, theta: float, vtk_dir: Path) -> None:
     pts = np.stack([cx.ravel(), cy.ravel(), Z.ravel()], axis=1)
     for k in range(case.n_snaps):
         w.step(int(case.snap_interval_s / 0.05))
-        v = np.asarray(w.sample(pts)).reshape(nx, ny, nz, 3)
+        v = to_numpy(w.sample(pts)).reshape(nx, ny, nz, 3)     # sample() returns a cupy array on GPU machines
         t = np.deg2rad(theta)       # city -> dom velocity rotation by -theta
         u = np.stack([np.cos(t) * v[..., 0] + np.sin(t) * v[..., 1], -np.sin(t) * v[..., 0] + np.cos(t) * v[..., 1],
                       v[..., 2]], axis=-1)
