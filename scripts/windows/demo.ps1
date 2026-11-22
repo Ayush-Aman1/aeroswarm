@@ -1,11 +1,20 @@
 <#
 .SYNOPSIS  Start the service with the best available tier, time the start-up (< 30 s), run the scripted demo-flow
-           checks, open the viewer, and stop the service when you press Enter.
+           checks, then restart the service on a fresh scene, open the viewer, and stop when you press Enter.
 .EXAMPLE   .\demo.ps1                       # best tier: fluidx3d if fields exist, else lbmpy (GPU), else synthetic
            .\demo.ps1 -Tier synthetic -Scenario scenarios\block_small.json
+           .\demo.ps1 -Scenario scenarios\stress_1k.json -NoCheck      # 1000 drones, straight to the viewer
+           .\demo.ps1 -NoBrowser            # checks only (CI / rehearsal), no viewer, no prompt
+           .\demo.ps1 -Gpu                  # run the service on the cupy backend instead of numpy
+.NOTES     The live service runs on numpy by default. Measured on an RTX 5070 Ti laptop (stress_1k, Tier 2, 400 ticks):
+           numpy median 23 ms / p95 39 ms per tick vs cupy 46 / 81 ms - at 1k drones the cupy path is dominated by many
+           small kernel launches (pairs_grid loops over 27 cell offsets). The GPU wins at 10k drones: bench\swarm_bench.py.
 #>
-param([string]$Tier = '', [string]$Scenario = 'scenarios\block_small.json', [int]$Port = 8080, [switch]$NoBrowser)
+param([string]$Tier = '', [string]$Scenario = 'scenarios\block_small.json', [int]$Port = 8080,
+      [switch]$NoBrowser, [switch]$NoCheck, [switch]$Gpu)
 . "$PSScriptRoot\_common.ps1"
+if ($Gpu) { Remove-Item Env:\AEROSWARM_FORCE_CPU -ErrorAction SilentlyContinue; Info 'backend: cupy (GPU) requested' }
+else { $env:AEROSWARM_FORCE_CPU = '1'; Info 'backend: numpy (smoothest at demo sizes; pass -Gpu for cupy)' }
 if (-not $Tier) {
     if (Test-Path 'data\fields\block_small\dir_000\meta.json') { $Tier = 'fluidx3d' }
     else {
@@ -13,33 +22,49 @@ if (-not $Tier) {
         $Tier = if ($LASTEXITCODE -eq 0) { 'lbmpy' } else { 'synthetic' }
     }
 }
-Info "tier = $Tier, scenario = $Scenario"
+Info "tier = $Tier, scenario = $Scenario, python = $Py"
 if (-not (Test-Path 'viewer\dist\index.html')) { Fail 'viewer\dist missing: cd viewer; npm ci; npm run build' }
 
-$py = (Get-Command python).Source
-$svcLog = Join-Path $ResultsDir 'service.log'
-$t0 = Get-Date
-$p = Start-Process -FilePath $py -ArgumentList @('-m', 'service.server', '--scenario', $Scenario, '--wind', $Tier, '--port', $Port) `
-        -RedirectStandardOutput $svcLog -RedirectStandardError "$svcLog.err" -PassThru -WindowStyle Hidden
-$ready = $false
-for ($i = 0; $i -lt 120; $i++) {
-    Start-Sleep -Milliseconds 500
-    try { $r = Invoke-RestMethod "http://127.0.0.1:$Port/api/state" -TimeoutSec 2; if ($r.hello.type -eq 'hello') { $ready = $true; break } } catch { }
-    if ($p.HasExited) { break }
-}
-$secs = ((Get-Date) - $t0).TotalSeconds
-if ($ready -and $secs -lt 30) { Pass ("service up in {0:N1} s (< 30 s)" -f $secs) }
-elseif ($ready) { Fail ("service up but took {0:N1} s (> 30 s)" -f $secs) }
-else { Fail "service did not start - see $svcLog and $svcLog.err" }
+try { $busy = Invoke-RestMethod "http://127.0.0.1:$Port/api/state" -TimeoutSec 1 } catch { $busy = $null }
+if ($busy) { Fail "port $Port is already serving AeroSwarm - stop that service first (or pass -Port)"; Finish 'demo' }
 
-if ($ready) {
+$svcLog = Join-Path $ResultsDir 'service.log'
+
+function Start-AeroService([string]$label) {
+    # Returns the process if the service answers /api/state within 60 s, else $null. Logs: service[-label].log(.err)
+    $log = if ($label) { $svcLog -replace '\.log$', "-$label.log" } else { $svcLog }
+    $t0 = Get-Date
+    $proc = Start-Process -FilePath $Py -ArgumentList @('-m', 'service.server', '--scenario', $Scenario, '--wind', $Tier, '--port', $Port) `
+            -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru -WindowStyle Hidden
+    for ($i = 0; $i -lt 120; $i++) {
+        Start-Sleep -Milliseconds 500
+        try { $r = Invoke-RestMethod "http://127.0.0.1:$Port/api/state" -TimeoutSec 2; if ($r.hello.type -eq 'hello') { break } } catch { }
+        if ($proc.HasExited) { break }
+    }
+    $script:StartSecs = ((Get-Date) - $t0).TotalSeconds
+    if ($proc.HasExited -or $i -ge 120) { Fail "service did not start - see $log and $log.err"; return $null }
+    return $proc
+}
+
+$p = Start-AeroService ''
+if ($p) {
+    if ($StartSecs -lt 30) { Pass ("service up in {0:N1} s (< 30 s)" -f $StartSecs) } else { Fail ("service up but took {0:N1} s (> 30 s)" -f $StartSecs) }
+}
+
+if ($p -and -not $NoCheck) {
     Invoke-Py tools\demo_check.py --url "ws://127.0.0.1:$Port/ws" 2>&1 | Tee-Object -FilePath (Join-Path $ResultsDir 'demo_check.log')
     if ($LASTEXITCODE -eq 0) { Pass 'scripted demo-flow checks (routing toggle, move/reject building, rotate inflow, metrics)' } else { Fail 'scripted demo-flow check failed - see demo_check.log' }
     if (-not $NoBrowser) {
-        Start-Process "http://127.0.0.1:$Port"
-        Info 'Viewer open. Now do the manual items of TESTING_CHECKLIST_WINDOWS.md (FPS, XR, screen recording), then press Enter here to stop.'
-        [void](Read-Host)
+        # The check moved a building and rotated the wind: restart so the audience sees the original scene.
+        Stop-Process -Id $p.Id -Force; $p.WaitForExit()
+        $p = Start-AeroService 'live'
+        if ($p) { Pass 'service restarted on a fresh scene for the live demo' }
     }
+}
+if ($p -and -not $NoBrowser) {
+    Start-Process "http://127.0.0.1:$Port"
+    Info "Viewer open at http://127.0.0.1:$Port . Do the manual items of TESTING_CHECKLIST_WINDOWS.md (FPS, XR, screen recording), then press Enter here to stop."
+    [void](Read-Host)
 }
 if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force }
 Finish 'demo'

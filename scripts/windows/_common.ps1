@@ -13,14 +13,22 @@ function Pass([string]$msg) { Write-Host "PASS: $msg" -ForegroundColor Green }
 function Fail([string]$msg) { Write-Host "FAIL: $msg" -ForegroundColor Red; $script:Failures++ }
 function Info([string]$msg) { Write-Host "INFO: $msg" -ForegroundColor Cyan }
 
-# Use the aeroswarm conda env for everything below (activated in-process so quoting of `python -c "..."` is plain
-# PowerShell, not conda-run quoting). Falls back to whatever `python` is on PATH (e.g. an already activated env).
-if (Get-Command conda -ErrorAction SilentlyContinue) {
+# Pick the Python interpreter, first match wins:
+#   1. $env:AEROSWARM_PYTHON (full path to python.exe)
+#   2. a venv at the repo root: .venv\Scripts\python.exe  (README quick start; may be a junction to a venv elsewhere)
+#   3. the aeroswarm conda env (activated in-process so quoting of `python -c "..."` is plain PowerShell)
+#   4. whatever `python` is on PATH (e.g. an already activated env)
+$script:Py = $null
+if ($env:AEROSWARM_PYTHON -and (Test-Path $env:AEROSWARM_PYTHON)) { $script:Py = $env:AEROSWARM_PYTHON }
+elseif (Test-Path (Join-Path $script:Root '.venv\Scripts\python.exe')) { $script:Py = Join-Path $script:Root '.venv\Scripts\python.exe' }
+elseif (Get-Command conda -ErrorAction SilentlyContinue) {
     (& conda shell.powershell hook) | Out-String | Invoke-Expression
     conda activate aeroswarm 2>$null
 }
+if (-not $script:Py) { $c = Get-Command python -ErrorAction SilentlyContinue; if ($c) { $script:Py = $c.Source } }
+if (-not $script:Py) { Write-Host 'FAIL: no Python found (create .venv, set AEROSWARM_PYTHON, or install the conda env)' -ForegroundColor Red; exit 1 }
 # Deliberately a plain function (no param block): $args passes -c, -m, -W straight through to python.
-function Invoke-Py { & python @args }
+function Invoke-Py { & $script:Py @args }
 
 function Finish([string]$name) {
     if ($script:Failures -eq 0) { Write-Host "`nRESULT: $name PASS" -ForegroundColor Green; exit 0 }
