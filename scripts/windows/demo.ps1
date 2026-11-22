@@ -5,16 +5,15 @@
            .\demo.ps1 -Tier synthetic -Scenario scenarios\block_small.json
            .\demo.ps1 -Scenario scenarios\stress_1k.json -NoCheck      # 1000 drones, straight to the viewer
            .\demo.ps1 -NoBrowser            # checks only (CI / rehearsal), no viewer, no prompt
-           .\demo.ps1 -Gpu                  # run the service on the cupy backend instead of numpy
-.NOTES     The live service runs on numpy by default. Measured on an RTX 5070 Ti laptop (stress_1k, Tier 2, 400 ticks):
-           numpy median 23 ms / p95 39 ms per tick vs cupy 46 / 81 ms - at 1k drones the cupy path is dominated by many
-           small kernel launches (pairs_grid loops over 27 cell offsets). The GPU wins at 10k drones: bench\swarm_bench.py.
+           .\demo.ps1 -Cpu                  # force the numpy backend (e.g. to show the CPU/GPU difference live)
+.NOTES     The service uses cupy when a CUDA device works (engine/backend.py), else numpy. Measured on an RTX 5070 Ti
+           laptop, stress_1k on Tier 2, 600 ticks: cupy median 7.4 ms / p95 13.4 ms per tick, numpy 9.5 / 16.3 ms.
 #>
 param([string]$Tier = '', [string]$Scenario = 'scenarios\block_small.json', [int]$Port = 8080,
-      [switch]$NoBrowser, [switch]$NoCheck, [switch]$Gpu)
+      [switch]$NoBrowser, [switch]$NoCheck, [switch]$Cpu)
 . "$PSScriptRoot\_common.ps1"
-if ($Gpu) { Remove-Item Env:\AEROSWARM_FORCE_CPU -ErrorAction SilentlyContinue; Info 'backend: cupy (GPU) requested' }
-else { $env:AEROSWARM_FORCE_CPU = '1'; Info 'backend: numpy (smoothest at demo sizes; pass -Gpu for cupy)' }
+if ($Cpu) { $env:AEROSWARM_FORCE_CPU = '1'; Info 'backend: numpy (forced with -Cpu)' }
+else { Remove-Item Env:\AEROSWARM_FORCE_CPU -ErrorAction SilentlyContinue; Info 'backend: cupy if a CUDA device works, else numpy' }
 if (-not $Tier) {
     if (Test-Path 'data\fields\block_small\dir_000\meta.json') { $Tier = 'fluidx3d' }
     else {

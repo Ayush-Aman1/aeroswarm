@@ -3,8 +3,9 @@
 The sequence (calcHash -> sort/scatter by cell -> findCellStart -> loop own + 26 neighbour cells) follows
 the NVIDIA cuda-samples `particles` sample, https://github.com/NVIDIA/cuda-samples (BSD-3-Clause style
 licence), re-implemented here with xp array primitives (numpy or cupy). The fused GPU kernel at the bottom
-is a cupy RawKernel modelled on that sample's `collideCell`; it is UNTESTED on a Mac (no CUDA) and is
-exercised by the `gpu`-marked test in tests/test_p3_swarm.py.
+is a cupy RawKernel modelled on that sample's `collideCell`: one launch per step computes the separation
+forces, near flags and the near-collision pair keys. Verified on an RTX 5070 Ti (cupy-cuda13x) by the
+`gpu`-marked tests in tests/test_p3_swarm.py (parity with pairs_grid and with the xp swarm path).
 
 A naive O(N^2) path is kept for correctness tests and for the benchmark's naive-vs-grid comparison.
 """
@@ -113,8 +114,11 @@ extern "C" __global__
 void separation(const float* __restrict__ pos, const long long* __restrict__ order,
                 const long long* __restrict__ starts, const long long* __restrict__ counts,
                 float* __restrict__ acc, unsigned char* __restrict__ near_flag,
+                long long* __restrict__ near_keys, int* __restrict__ n_near, int cap,
                 int n, float cell, int nx, int ny, int nz, float r_sep, float k_sep, float d_near)
 {
+    // near_keys: unordered list of i*n+j for every pair i<j with d2 < d_near^2 (the caller sorts it).
+    // *n_near counts all such pairs even past `cap`, so the caller can detect overflow and relaunch.
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= n) return;
     float px = pos[3*i], py = pos[3*i+1], pz = pos[3*i+2];
@@ -133,6 +137,10 @@ void separation(const float* __restrict__ pos, const long long* __restrict__ ord
             if (j == i) continue;
             float rx = px - pos[3*j], ry = py - pos[3*j+1], rz = pz - pos[3*j+2];
             float d2 = rx*rx + ry*ry + rz*rz;
+            if (i < j && d2 < d_near * d_near) {
+                int slot = atomicAdd(n_near, 1);
+                if (slot < cap) near_keys[slot] = (long long)i * n + j;
+            }
             if (d2 < r_sep * r_sep) {
                 float d = fmaxf(sqrtf(d2), 0.1f);
                 float m = k_sep * (1.f - d / r_sep) / d;
@@ -148,21 +156,38 @@ void separation(const float* __restrict__ pos, const long long* __restrict__ ord
 _kernel = None
 
 
-def separation_gpu(pos, grid: Grid, r_sep: float, k_sep: float, d_near: float):
-    """Fused neighbour loop on the GPU -> (accel [n,3] float32, near_flag [n] bool). Needs cupy."""
+def separation_gpu(pos, grid: Grid, r_sep: float, k_sep: float, d_near: float, return_pairs: bool = False):
+    """Fused neighbour loop on the GPU -> (accel [n,3] float32, near_flag [n] bool). Needs cupy.
+
+    With return_pairs=True also returns the near pairs as sorted int64 keys i*n+j (i<j, d2 < d_near^2):
+    the same keys as pairs_grid(pos, d_near, grid) -> i*n+j, without its 27 host-synchronising passes.
+    Requires grid.cell_m >= d_near (true for Drones: cell = r_sep >= d_near)."""
     global _kernel
     if not is_gpu:
         raise RuntimeError("separation_gpu needs the cupy backend (no CUDA device here)")
+    if d_near > grid.cell_m:
+        raise ValueError(f"d_near {d_near} > grid cell {grid.cell_m}: the 27-cell search would miss pairs")
     if _kernel is None:
-        _kernel = xp.RawKernel(SEPARATION_KERNEL_SRC, "separation")
+        # --fmad=false: no fused multiply-add, so d2 rounds exactly like the xp path's (a-b)^2 sums and the
+        # near-pair classification (a metric) is identical on CPU and GPU.
+        _kernel = xp.RawKernel(SEPARATION_KERNEL_SRC, "separation", options=("--fmad=false",))
     pos = xp.ascontiguousarray(pos, dtype=xp.float32)
     n = len(pos)
     g = grid.build(pos)
-    acc = xp.zeros((n, 3), dtype=xp.float32)
-    near = xp.zeros(n, dtype=xp.uint8)
     block = 128
-    _kernel(((n + block - 1) // block,), (block,),
-            (pos, g["order"], g["starts"], g["counts"], acc, near, np.int32(n), np.float32(grid.cell_m),
-             np.int32(grid.dims[0]), np.int32(grid.dims[1]), np.int32(grid.dims[2]),
-             np.float32(r_sep), np.float32(k_sep), np.float32(d_near)))
-    return acc, near.astype(bool)
+    cap = max(4 * n, 1024)
+    while True:
+        acc = xp.zeros((n, 3), dtype=xp.float32)
+        near = xp.zeros(n, dtype=xp.uint8)
+        keys = xp.empty(cap, dtype=xp.int64)
+        count = xp.zeros(1, dtype=xp.int32)
+        _kernel(((n + block - 1) // block,), (block,),
+                (pos, g["order"], g["starts"], g["counts"], acc, near, keys, count, np.int32(cap),
+                 np.int32(n), np.float32(grid.cell_m), np.int32(grid.dims[0]), np.int32(grid.dims[1]),
+                 np.int32(grid.dims[2]), np.float32(r_sep), np.float32(k_sep), np.float32(d_near)))
+        if not return_pairs:
+            return acc, near.astype(bool)
+        m = int(count[0])                                  # the one host sync per step
+        if m <= cap:
+            return acc, near.astype(bool), xp.sort(keys[:m])   # atomics give any order: sort -> deterministic
+        cap = m                                            # rare: buffer too small, relaunch with exact size

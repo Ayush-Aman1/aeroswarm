@@ -176,3 +176,57 @@ def test_gpu_kernel_matches_xp_path():
     acc_ref, near_ref, _ = d._separation(xp.asarray(p))
     np.testing.assert_allclose(to_numpy(acc), to_numpy(acc_ref), rtol=1e-4, atol=1e-4)
     np.testing.assert_array_equal(to_numpy(near), to_numpy(near_ref))
+
+
+def _keys_ref(p, r, g):
+    i, j, _ = G.pairs_grid(p, r, g)
+    return to_numpy(i * len(p) + j)
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("cloud", ["spread", "dense_overflow"])
+def test_gpu_kernel_near_pairs_equal_pairs_grid(cloud):
+    if not backend.is_gpu:
+        pytest.skip("no CUDA device / cupy")
+    if cloud == "spread":
+        p = rand_pos(2000, 4) * [0.3, 0.3, 0.3] + [100, 100, 20]
+    else:   # ~1.3k drones inside a 1.5 m cube: ~800k near pairs >> the 4n buffer -> exercises the relaunch path
+        p = np.random.default_rng(7).uniform(0, 1.5, (1300, 3)).astype(np.float32) + [200, 150, 40]
+    p = xp.asarray(p, dtype=xp.float32)
+    g = G.Grid(BOUNDS, 6.0)
+    acc, near, keys = G.separation_gpu(p, g, 6.0, 6.0, 2.0, return_pairs=True)
+    ref = _keys_ref(p, 2.0, g)
+    if cloud == "dense_overflow":
+        assert len(ref) > 4 * len(p)
+    np.testing.assert_array_equal(to_numpy(keys), ref)
+    acc2, near2 = G.separation_gpu(p, g, 6.0, 6.0, 2.0)          # default call keeps its 2-tuple contract
+    np.testing.assert_array_equal(to_numpy(acc2), to_numpy(acc))
+    with pytest.raises(ValueError):
+        G.separation_gpu(p, G.Grid(BOUNDS, 1.0), 6.0, 6.0, 2.0)  # cell smaller than d_near: refused
+
+
+@pytest.mark.gpu
+def test_gpu_kernel_swarm_matches_xp_swarm_over_many_steps():
+    """Whole Drones.step on the fused kernel vs the xp pair path: same trajectories (1e-4) and the same
+    near-collision event count (exact), on a crowded swarm crossing paths."""
+    if not backend.is_gpu:
+        pytest.skip("no CUDA device / cupy")
+    rng = np.random.default_rng(11)
+    start = rng.uniform([150, 100, 25], [250, 200, 35], (400, 3)).astype(np.float32)
+    goal = start[::-1] * [1, 1, 1]                      # everybody flies through the crowd
+
+    def run(use_kernel):
+        d = Drones(400, BOUNDS, SimSettings(), use_kernel=use_kernel)
+        for k in range(400):
+            d.place(k, start[k]); d.set_path(k, [goal[k]])
+        w = UniformWind([3.0, 1.0, 0.0])
+        for _ in range(300):
+            d.step(0.05, w)
+        return to_numpy(d.pos), d.near_events, to_numpy(d.near_count)
+
+    pk, ek, ck = run(True)
+    px, ex, cx = run(False)
+    assert ex > 0
+    np.testing.assert_allclose(pk, px, rtol=1e-4, atol=1e-3)
+    assert ek == ex
+    np.testing.assert_array_equal(ck, cx)

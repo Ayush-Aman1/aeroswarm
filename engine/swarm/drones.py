@@ -72,10 +72,8 @@ class Drones:
         if m < 2:
             return xp.zeros((m, 3), xp.float32), xp.zeros(m, bool), xp.zeros(0, xp.int64)
         if self.use_grid and self.use_kernel and is_gpu:
-            acc, near = gridmod.separation_gpu(p, self.grid, pr.r_sep, K_SEP, pr.d_near)
-            # near-collision *pair events* still come from the xp pair search (cheap: only close pairs)
-            i, j, d2 = gridmod.pairs_grid(p, pr.d_near, self.grid)
-            return acc, near, i * m + j
+            # one fused kernel: forces, near flags and the near-collision pair keys (sorted i*m+j)
+            return gridmod.separation_gpu(p, self.grid, pr.r_sep, K_SEP, pr.d_near, return_pairs=True)
         i, j, d2 = (gridmod.pairs_grid(p, pr.r_sep, self.grid) if self.use_grid
                     else gridmod.pairs_naive(p, pr.r_sep))
         d = xp.maximum(xp.sqrt(d2), 0.1)
