@@ -18,13 +18,37 @@ ROOT = Path(__file__).resolve().parents[1]
 CC = shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
 
 
+def _msvc_vcvars():
+    """Path to vcvars64.bat of the newest Visual Studio / Build Tools with the C++ tools, or None (Windows only)."""
+    if sys.platform != "win32":
+        return None
+    import os
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft Visual Studio/Installer/vswhere.exe"
+    if not vswhere.exists():
+        return None
+    r = subprocess.run([str(vswhere), "-latest", "-products", "*", "-requires",
+                        "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+                       capture_output=True, text=True)
+    bat = Path(r.stdout.strip()) / "VC/Auxiliary/Build/vcvars64.bat" if r.stdout.strip() else None
+    return bat if bat and bat.exists() else None
+
+
+VCVARS = None if CC else _msvc_vcvars()
+
+
 @pytest.fixture(scope="module")
 def lib(tmp_path_factory):
-    if CC is None:
+    if CC is None and VCVARS is None:
         pytest.skip("no C compiler")
-    out = tmp_path_factory.mktemp("native") / ("aero_mock.dll" if sys.platform == "win32" else "libaero_mock.so")
+    d = tmp_path_factory.mktemp("native")
+    out = d / ("aero_mock.dll" if sys.platform == "win32" else "libaero_mock.so")
+    src = ROOT / "native/mock/aero_mock.c"
+    if CC is None:      # MSVC: cl inside a vcvars64 environment; the header's AERO_API is __declspec(dllexport)
+        subprocess.run(f'call "{VCVARS}" >nul 2>&1 && cl /nologo /O1 /LD "{src}" /Fe:"{out}" /Fo:"{d}\\\\"',
+                       shell=True, check=True, capture_output=True)
+        return str(out)
     flags = ["-shared", "-fPIC"] if sys.platform != "darwin" else ["-dynamiclib"]
-    subprocess.run([CC, "-O1", *flags, "-o", str(out), str(ROOT / "native/mock/aero_mock.c"), "-lm"], check=True)
+    subprocess.run([CC, "-O1", *flags, "-o", str(out), str(src), "-lm"], check=True)
     return str(out)
 
 

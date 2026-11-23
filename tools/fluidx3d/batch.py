@@ -75,7 +75,8 @@ def build(work: Path) -> Path:
         vswhere = Path(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe")
         msbuild = None
         if vswhere.exists():
-            out = subprocess.run([str(vswhere), "-latest", "-requires", "Microsoft.Component.MSBuild", "-find",
+            # -products *: also find "Build Tools" installs (vswhere's default lists only full VS editions)
+            out = subprocess.run([str(vswhere), "-latest", "-products", "*", "-requires", "Microsoft.Component.MSBuild", "-find",
                                   r"MSBuild\**\Bin\MSBuild.exe"], capture_output=True, text=True).stdout.split("\n")[0]
             msbuild = out.strip() or None
         msbuild = msbuild or shutil.which("msbuild")
