@@ -4,16 +4,29 @@
 # a Linux GPU driver inside WSL2. FluidX3D (OpenCL) is NOT available inside WSL2 - build/run it natively on Windows.
 source "$(dirname "$0")/_common.sh"
 command -v nvidia-smi >/dev/null && pass "nvidia-smi present" || fail "nvidia-smi missing (WSL2: update the Windows NVIDIA driver; Ubuntu: install the driver)"
-command -v g++ >/dev/null && pass "g++ present" || { info "installing build tools"; sudo apt-get update -y && sudo apt-get install -y build-essential git ocl-icd-opencl-dev python3.11 python3.11-venv curl && pass "build-essential installed" || fail "apt install failed"; }
+# Ubuntu 24.04 ships Python 3.12 (no python3.11 package): any python3 >= 3.11 is fine (lbmpy/pystencils 2.0 need >= 3.10).
+PY=$(command -v python3.11 || command -v python3 || true)
+if ! command -v g++ >/dev/null || [ -z "$PY" ] || ! "$PY" -c 'import ensurepip' 2>/dev/null; then
+  info "installing build tools + python venv support (sudo asks for your Linux password)"
+  sudo apt-get update -y && sudo apt-get install -y build-essential git ocl-icd-opencl-dev python3 python3-venv python3-dev curl \
+    && pass "build tools installed" || fail "apt install failed"
+  PY=$(command -v python3.11 || command -v python3)
+fi
+"$PY" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' && pass "python $("$PY" --version 2>&1 | cut -d' ' -f2)" \
+  || fail "python >= 3.11 needed, found $("$PY" --version 2>&1)"
 if ! command -v conda >/dev/null 2>&1; then
-  info "no conda: using python3.11 venv in .venv"
-  python3.11 -m venv .venv && source .venv/bin/activate && pass "venv .venv created" || fail "venv creation failed"
+  info "no conda: venv in $VENV (Linux filesystem, not the Windows-shared repo)"
+  { [ -f "$VENV/bin/activate" ] || "$PY" -m venv "$VENV"; } && source "$VENV/bin/activate" && pass "venv $VENV ready" || fail "venv creation failed"
 else
   conda env list | grep -q '^aeroswarm ' || conda create -n aeroswarm python=3.11 -y
   eval "$(conda shell.bash hook)"; conda activate aeroswarm
 fi
 python -m pip install --upgrade pip && python -m pip install -r requirements.txt && pass "base requirements" || fail "pip install -r requirements.txt"
-python -m pip install cupy-cuda12x "lbmpy[gpu]" && pass "cupy-cuda12x + lbmpy[gpu]" || fail "GPU packages (check the CUDA version vs the cupy wheel)"
+# cupy wheel matching the driver's CUDA major version; [ctk] pulls the CUDA runtime/NVRTC from pip (WSL2 has no toolkit).
+# Not "lbmpy[gpu]": that extra depends on plain `cupy`, which pip would try to build from source.
+CUDA_MAJOR=$(nvidia-smi 2>/dev/null | sed -n 's/.*CUDA Version: *\([0-9]*\).*/\1/p' | head -1)
+CUPY="cupy-cuda12x"; [ "${CUDA_MAJOR:-12}" -ge 13 ] && CUPY="cupy-cuda13x"
+python -m pip install "$CUPY[ctk]" && pass "$CUPY[ctk] (driver CUDA ${CUDA_MAJOR:-?})" || fail "GPU packages ($CUPY[ctk]; check nvidia-smi's CUDA version)"
 python -m pip freeze > "$RESULTS/requirements.linux.lock"; info "pip freeze saved to $RESULTS/requirements.linux.lock"
 command -v node >/dev/null && pass "node $(node --version)" || info "Node.js 20 not found (only needed to rebuild the viewer; viewer/dist is committed)"
 mkdir -p third_party
