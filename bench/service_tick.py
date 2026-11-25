@@ -29,8 +29,18 @@ import numpy as np
 
 def _env() -> dict:
     from engine import backend
+    import hashlib
+
+    import engine.swarm.drones as drones_mod
+    import engine.swarm.grid as grid_mod
+    import service.server as server_mod
     env = {"python": platform.python_version(), "platform": platform.platform(), "backend": backend.backend_name,
-           "numpy": np.__version__, "cwd": os.getcwd()}
+           "numpy": np.__version__, "cwd": os.getcwd(), "script": os.path.abspath(__file__),
+           "script_sha256": hashlib.sha256(open(__file__, "rb").read()).hexdigest(),
+           # which checkout's code was actually timed (the cwd's, see the module docstring)
+           "imported_from": {m.__name__: os.path.abspath(m.__file__) for m in (grid_mod, drones_mod, server_mod)},
+           "grid_py_sha256": hashlib.sha256(open(grid_mod.__file__, "rb").read()).hexdigest(),
+           "grid_has_fused_near_pairs": "return_pairs" in open(grid_mod.__file__).read()}
     try:
         env["git_commit"] = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         env["git_dirty"] = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
